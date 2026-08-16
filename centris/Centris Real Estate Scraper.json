@@ -1,0 +1,835 @@
+{
+  "name": "Centris Real Estate Scraper",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "4c46e533-9e79-4f8d-9be0-cd438d8e239c",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "dataPropertyName": "d.Result.html",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "property_link",
+              "cssSelector": "a.a-more-detail:first-child",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {
+          "trimValues": false
+        }
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        368,
+        0
+      ],
+      "id": "8144f2d5-f8b7-4faf-9977-b6833e75a56d",
+      "name": "ExtractPropertyLink"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "property_link",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        544,
+        0
+      ],
+      "id": "30c3be3c-fbb8-48f0-8c84-71c29b270bae",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "95bd5c5c-f3b3-4c9c-910c-6d0f9a24759d",
+              "name": "full_property_link",
+              "value": "={{\"https://www.centris.ca\"+ $json.property_link  }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        736,
+        0
+      ],
+      "id": "7f0837f0-16dc-4290-bfe1-f9a9bee13ba6",
+      "name": "GetFullLink"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.full_property_link }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        160,
+        224
+      ],
+      "id": "e109f89d-52ff-4853-8055-cc2c061f827d",
+      "name": "GetEachProperty"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "Price",
+              "cssSelector": "#BuyPrice"
+            },
+            {
+              "key": "Address",
+              "cssSelector": ".property-summary-header__address"
+            },
+            {
+              "key": "Rooms",
+              "cssSelector": ".piece"
+            },
+            {
+              "key": "Bedrooms",
+              "cssSelector": ".cac"
+            },
+            {
+              "key": "Bathrooms",
+              "cssSelector": ".sdb"
+            },
+            {
+              "key": "all_features_values",
+              "cssSelector": "div.carac-value span",
+              "returnArray": true
+            },
+            {
+              "key": "all_features_titles",
+              "cssSelector": ".carac-title",
+              "returnArray": true
+            },
+            {
+              "key": "Type",
+              "cssSelector": ".property-summary-header__title"
+            },
+            {
+              "key": "url",
+              "cssSelector": "meta[property=\"og:url\"]",
+              "returnValue": "attribute",
+              "attribute": "content"
+            },
+            {
+              "key": "financial_titles",
+              "cssSelector": ".financial-details-table__label",
+              "returnArray": true
+            },
+            {
+              "key": "financial_values",
+              "cssSelector": ".financial-details-table__value",
+              "returnArray": true
+            },
+            {
+              "key": "broker_links",
+              "cssSelector": ".card-link",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        368,
+        224
+      ],
+      "id": "9cf37f6d-dc56-467a-bdae-13ea1b89fffb",
+      "name": "PropertyFeatures"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => {\n\n  // Helper function for cleaning data\n  const cleanNumber = (text) => {\n    if (!text) return '';\n    // Removing kammas\n    return text.toString().replace(/[^0-9,.]/g, '').replace(/,/g, '');\n  };\n  \n  // Get property features\n  const titles = item.json.all_features_titles || [];\n  const values = item.json.all_features_values || [];\n\n  // Get financial table data\n  //const financeTitles = item.json.financial_titles || [];\n  const financeValues = item.json.financial_values || [];\n  \n  let featureData = {};\n  // Loop through titles and map each value to its title\n  for (let i = 0; i < titles.length; i++) {\n      // Clean the title: lower case, replace spaces with underscores, remove special chars\n    let key = titles[i]\n      .trim()\n      .toLowerCase()\n      .replace(/[^a-z0-9]/g, '_')\n      .replace(/_+/g, '_');\n      \n    // Assign the corresponding value to the cleaned key\n    featureData[key] = values[i] || '';\n  }\n\n  // Extract property_id from the url if it exists\n  let propertyId = '';\n  if (item.json.url) {\n    propertyId = item.json.url.split('/').pop();\n  }\n\n  const brokerLinks = item.json.broker_links || [];\n  const fullBrokerUrls = brokerLinks.map(link => `https://www.centris.ca${link}`);\n  \n  const brokerIds = brokerLinks.map(link => link.split('/').pop());\n  \n  // Return the original fields plus the newly created feature columns\n  return {\n    json: {\n      Property_link: item.json.url || '',\n      Property_ID: propertyId,\n      BrokersLink: fullBrokerUrls.join(', '),\n      BrokersID: brokerIds.join(', '),\n      Type: item.json.Type || '',\n      Price: item.json.Price || '',\n      Address: item.json.Address || '',\n      Rooms: cleanNumber(item.json.Rooms),\n      Bedrooms: cleanNumber(item.json.Bedrooms),\n      Bathrooms: cleanNumber(item.json.Bathrooms),\n      ...featureData ,\n      assessLot: financeValues[0] || '',\n      assessBuilding: financeValues[1] || '',\n      assessTotal: financeValues[2] || '',\n      taxMunicipal: financeValues[6] || '',\n      taxSchool: financeValues[7] || '',\n      taxTotal: financeValues[8] || '',\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        224
+      ],
+      "id": "69afafc9-4520-4f74-a156-41b3aeb9a737",
+      "name": "CleaningforSheet"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -176
+      ],
+      "id": "c77a243c-21db-4ca1-8846-e3144ede8bf6",
+      "name": "Just the first time"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.centris.ca/Property/GetInscriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=UTF-8"
+            },
+            {
+              "name": "x-requested-with",
+              "value": "XMLHttpRequest"
+            },
+            {
+              "name": "cookie",
+              "value": "Anonymous=CfDJ8JncBQArmuhEsHGULYoR0mau1U3qXPZeMxMCtGrGyyb1DCLfVQy_pHtrog5SBsey-CAtr04FyjPbyP5yFt4dNw_XwVU5AHCOWGNy7fNh8-PQjhkbU7dxGI3b1iZ4QEOtf8QzC-EnqsLDcoPA0lehcB_fQdz_JQ7IAoxsIGnKPiyXMxmkJczf4YAsdFkbud-fx0WrxN4idpH0AWk7H_Vf9haX4z21GpdGsckt8WEhAhFkSlaWsN2EAv2ETiqgUjSto1_WlpgUCjd1OLfP7XIJWlAdoZbkLjDIKOZdnh7B6ioD3wgu0JWBzo1HrVFXDGKyuJCG8Q4XW69tSiRTyDA6TiWwe97ObGgOTIh9QAoiazdXmG5HbRKdBv2eyTktH4QPJY2v828PHqiDdrb1y5NjzNINJjuvscBht5nSObazMguO6D1JxDP18BzLhV8OObKx0TLleU-877dIsuEq_iBpHX0; ll-search-selection=; .AspNetCore.Culture=c%3Den%7Cuic%3Den; ll-visitor-id=16c18c49-9989-4a7d-a5ed-d6ea752e64b2; didomi_token=eyJ1c2VyX2lkIjoiMTlmZGQxOTgtNTM5Ny02Mzc3LWJkYmQtNWNlOWZjY2QwMDdhIiwiY3JlYXRlZCI6IjIwMjYtMDgtMDdUMTY6NDE6MDUuMDgxWiIsInVwZGF0ZWQiOiIyMDI2LTA4LTA3VDE2OjQxOjExLjc0NVoiLCJ2ZW5kb3JzIjp7ImVuYWJsZWQiOlsiZ29vZ2xlIiwiYW1hem9uIiwiYzpob3RqYXIiLCJjOnBpbnRlcmVzdCIsImM6Z29vZ2xlYW5hLTRUWG5KaWdSIiwiYzpwcm9zcGVjdG8teGlVRTJuakUiLCJjOmxvY2FsbG9naS1qUERwdFJVZSIsImM6Z29vZ2xlbWFwLVJIZWlEckVuIiwiYzpkaWRvbWktODk0bkdUQkgiXX0sInB1cnBvc2VzIjp7ImVuYWJsZWQiOlsiZ2VvbG9jYXRpb25fZGF0YSIsImRldmljZV9jaGFyYWN0ZXJpc3RpY3MiXX0sInZlbmRvcnNfbGkiOnsiZW5hYmxlZCI6WyJnb29nbGUiXX0sInZlcnNpb24iOjIsImFjIjoiQzVPQUVBRmtGeVlBLkM1T0FFQUZrRnlZQSJ9; euconsent-v2=CQok0AAQok0AAAHABBENCqFsAP_gAEPgAAAAICQD4AFAAWAA0ADgAHwAWgA0AB6AEWAJgAmgBQAEcAJ0AeIC8wICAgJAJAAWABwAGgARQAmACOAXmA00CAgAAAAA.IICQEIAFAAWAA0ADgAHwAWgA0AB6AEWAJgAmgBQAEcAJ0AeIC8wGmgQE.f_wACHwAAAAA; property-search-query=H4sIAAAAAAAACo2QMQ-CQAyF_8vNDKy6GRON0RgjhoUwVO8BFw8Oe4Ahhv9uiQ4XJzv1vX6vTfpStfVqqWIVqSu7O3jtNMQQ7YrC3LDH-JG9xxauZGqrMamoheTiSPm5TQ2eIrNcNIhv1ZHq75bC2A78HRYGVvuUbD-ns9fH2GlB19ShdDxKZJjnYp3hjUbTGbJqikI4gbWmKS9ji4BPyOIHPJhBuBWDQu7RE2MDdL80Nfpfdj52YnlQAMd_MIug1JRPb1xOKEmCAQAA; viewport_width=725; cf_clearance=qgY.UgjWkdodf83Q50Xbgz2K9FwvmS6XILYYE4qMSVk-1786133570-1.2.1.1-EbQmOA57W1X9dth_H97Wi6PvmhXrurWS8QCuv_9yEiEgNArucvjRIQ1dGuoyRg9wHkcIlion5uzR.hyzwi5vf0y8bbIl8RFW8Q3hQzTFLa5JcK5O0DgZaoCE.ASH0EWj_y4UXfmaVXF662dy4hQz12_xofxr5qIG1hjobCAbXTPbBbNXM7P_ZAqBkPMcV1c8RcDyNdxNfaSXhMCbkQ5r8yT3jNO7jAhivbWLsVcOf_wgxr00Z6QGt0209qDIoN8LtTpFn0KT3WuUUWC3ela3AqG9bWRRYs2l.z1dSdnC47grJzBQyTS_fIbI23MxwWkEMniQk3fJLBbP05avHtEb0l155CkL1A0G4asCqkMA6aY; __cf_bm=htyWRG15QgOAYMIjJWfTC0PVXS73n9dhYF1IYt_47eU-1786133570.3888059-1.0.1.1-jyTZNCrnktOAbnYjhb6r5BqLF2JYSm1wB3plY2e9Wyyk9bGNUhLB20OGxgeXbUgV07bgUh0egqCi4KcuSyd2O0OF6XTtoiYDsvE2o5l4aJ37G_aT9dj_kh854gZeG5EA"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n    \"mode\": \"Result\",\n    \"searchView\": \"Thumbnail\",\n    \"sortSeed\": 880494589,\n    \"sort\": \"DateDesc\",\n    \"pageSize\": 8,\n    \"page\": 1,\n    \"query\": {\n        \"SearchName\": \"\",\n        \"UseGeographyShapes\": 0,\n        \"Filters\": [],\n        \"FieldsValues\": [\n            {\n                \"fieldId\": \"Category\",\n                \"value\": \"Residential\",\n                \"fieldConditionId\": \"\",\n                \"valueConditionId\": \"\"\n            },\n            {\n                \"fieldId\": \"SellingType\",\n                \"value\": \"Sale\",\n                \"fieldConditionId\": \"\",\n                \"valueConditionId\": \"\"\n            },\n            {\n                \"fieldId\": \"LivingArea\",\n                \"value\": \"SquareFeet\",\n                \"fieldConditionId\": \"IsResidentialNotLot\",\n                \"valueConditionId\": \"\"\n            },\n            {\n                \"fieldId\": \"LandArea\",\n                \"value\": \"SquareFeet\",\n                \"fieldConditionId\": \"IsLandArea\",\n                \"valueConditionId\": \"\"\n            },\n            {\n                \"fieldId\": \"SalePrice\",\n                \"value\": 0,\n                \"fieldConditionId\": \"ForSale\",\n                \"valueConditionId\": \"\"\n            },\n            {\n                \"fieldId\": \"SalePrice\",\n                \"value\": 999999999999,\n                \"fieldConditionId\": \"ForSale\",\n                \"valueConditionId\": \"\"\n            }\n        ],\n        \"BrokerCode\": null,\n        \"OfficeKey\": null\n    },\n    \"region\": \"Quebec\"\n}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount +1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "receiveSpecificStatusCodes",
+              "statusCodesWhenComplete": "={{ $pageCount>=4 }}",
+              "limitPagesFetched": true,
+              "maxRequests": 3,
+              "requestInterval": 5
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        160,
+        -176
+      ],
+      "id": "7f5ad4e3-2d54-4247-96a1-3d9dbbc414b6",
+      "name": "GetEntireProperties"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1fkfb8wWruCjtcbkI5MVm9S7V_1RZgqFPmV6SG72S78I",
+          "mode": "list",
+          "cachedResultName": "centris_all_properties",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1fkfb8wWruCjtcbkI5MVm9S7V_1RZgqFPmV6SG72S78I/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1fkfb8wWruCjtcbkI5MVm9S7V_1RZgqFPmV6SG72S78I/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "Property_ID"
+          ],
+          "schema": [
+            {
+              "id": "Property_link",
+              "displayName": "Property_link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Property_ID",
+              "displayName": "Property_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "BrokersLink",
+              "displayName": "BrokersLink",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "BrokersID",
+              "displayName": "BrokersID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Price",
+              "displayName": "Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rooms",
+              "displayName": "Rooms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Bedrooms",
+              "displayName": "Bedrooms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Bathrooms",
+              "displayName": "Bathrooms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "building_style",
+              "displayName": "building_style",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "year_built",
+              "displayName": "year_built",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "lot_area",
+              "displayName": "lot_area",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "parking_total_",
+              "displayName": "parking_total_",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "fireplace_stove",
+              "displayName": "fireplace_stove",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "accessibility",
+              "displayName": "accessibility",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "additional_features",
+              "displayName": "additional_features",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "move_in_date",
+              "displayName": "move_in_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "assessLot",
+              "displayName": "assessLot",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "assessBuilding",
+              "displayName": "assessBuilding",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "assessTotal",
+              "displayName": "assessTotal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "taxMunicipal",
+              "displayName": "taxMunicipal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "taxSchool",
+              "displayName": "taxSchool",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "taxTotal",
+              "displayName": "taxTotal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "living_area",
+              "displayName": "living_area",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "use_of_property",
+              "displayName": "use_of_property",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "building_area_at_ground_level_",
+              "displayName": "building_area_at_ground_level_",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "number_of_units",
+              "displayName": "number_of_units",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "residential_units",
+              "displayName": "residential_units",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "main_unit",
+              "displayName": "main_unit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "potential_gross_revenue",
+              "displayName": "potential_gross_revenue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "zoning",
+              "displayName": "zoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pool",
+              "displayName": "pool",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        736,
+        224
+      ],
+      "id": "4c0b48dd-2414-442f-8041-5ccf259f8868",
+      "name": "Append or update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "l7kwEnMdnnvSih6f",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.centris.ca/Property/GetInscriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=UTF-8"
+            },
+            {
+              "name": "x-requested-with",
+              "value": "XMLHttpRequest"
+            },
+            {
+              "name": "cookie",
+              "value": "Anonymous=CfDJ8JncBQArmuhEsHGULYoR0mau1U3qXPZeMxMCtGrGyyb1DCLfVQy_pHtrog5SBsey-CAtr04FyjPbyP5yFt4dNw_XwVU5AHCOWGNy7fNh8-PQjhkbU7dxGI3b1iZ4QEOtf8QzC-EnqsLDcoPA0lehcB_fQdz_JQ7IAoxsIGnKPiyXMxmkJczf4YAsdFkbud-fx0WrxN4idpH0AWk7H_Vf9haX4z21GpdGsckt8WEhAhFkSlaWsN2EAv2ETiqgUjSto1_WlpgUCjd1OLfP7XIJWlAdoZbkLjDIKOZdnh7B6ioD3wgu0JWBzo1HrVFXDGKyuJCG8Q4XW69tSiRTyDA6TiWwe97ObGgOTIh9QAoiazdXmG5HbRKdBv2eyTktH4QPJY2v828PHqiDdrb1y5NjzNINJjuvscBht5nSObazMguO6D1JxDP18BzLhV8OObKx0TLleU-877dIsuEq_iBpHX0; ll-search-selection=; .AspNetCore.Culture=c%3Den%7Cuic%3Den; ll-visitor-id=16c18c49-9989-4a7d-a5ed-d6ea752e64b2; didomi_token=eyJ1c2VyX2lkIjoiMTlmZGQxOTgtNTM5Ny02Mzc3LWJkYmQtNWNlOWZjY2QwMDdhIiwiY3JlYXRlZCI6IjIwMjYtMDgtMDdUMTY6NDE6MDUuMDgxWiIsInVwZGF0ZWQiOiIyMDI2LTA4LTA3VDE2OjQxOjExLjc0NVoiLCJ2ZW5kb3JzIjp7ImVuYWJsZWQiOlsiZ29vZ2xlIiwiYW1hem9uIiwiYzpob3RqYXIiLCJjOnBpbnRlcmVzdCIsImM6Z29vZ2xlYW5hLTRUWG5KaWdSIiwiYzpwcm9zcGVjdG8teGlVRTJuakUiLCJjOmxvY2FsbG9naS1qUERwdFJVZSIsImM6Z29vZ2xlbWFwLVJIZWlEckVuIiwiYzpkaWRvbWktODk0bkdUQkgiXX0sInB1cnBvc2VzIjp7ImVuYWJsZWQiOlsiZ2VvbG9jYXRpb25fZGF0YSIsImRldmljZV9jaGFyYWN0ZXJpc3RpY3MiXX0sInZlbmRvcnNfbGkiOnsiZW5hYmxlZCI6WyJnb29nbGUiXX0sInZlcnNpb24iOjIsImFjIjoiQzVPQUVBRmtGeVlBLkM1T0FFQUZrRnlZQSJ9; euconsent-v2=CQok0AAQok0AAAHABBENCqFsAP_gAEPgAAAAICQD4AFAAWAA0ADgAHwAWgA0AB6AEWAJgAmgBQAEcAJ0AeIC8wICAgJAJAAWABwAGgARQAmACOAXmA00CAgAAAAA.IICQEIAFAAWAA0ADgAHwAWgA0AB6AEWAJgAmgBQAEcAJ0AeIC8wGmgQE.f_wACHwAAAAA; property-search-query=H4sIAAAAAAAACo2QMQ-CQAyF_8vNDKy6GRON0RgjhoUwVO8BFw8Oe4Ahhv9uiQ4XJzv1vX6vTfpStfVqqWIVqSu7O3jtNMQQ7YrC3LDH-JG9xxauZGqrMamoheTiSPm5TQ2eIrNcNIhv1ZHq75bC2A78HRYGVvuUbD-ns9fH2GlB19ShdDxKZJjnYp3hjUbTGbJqikI4gbWmKS9ji4BPyOIHPJhBuBWDQu7RE2MDdL80Nfpfdj52YnlQAMd_MIug1JRPb1xOKEmCAQAA; viewport_width=725; cf_clearance=qgY.UgjWkdodf83Q50Xbgz2K9FwvmS6XILYYE4qMSVk-1786133570-1.2.1.1-EbQmOA57W1X9dth_H97Wi6PvmhXrurWS8QCuv_9yEiEgNArucvjRIQ1dGuoyRg9wHkcIlion5uzR.hyzwi5vf0y8bbIl8RFW8Q3hQzTFLa5JcK5O0DgZaoCE.ASH0EWj_y4UXfmaVXF662dy4hQz12_xofxr5qIG1hjobCAbXTPbBbNXM7P_ZAqBkPMcV1c8RcDyNdxNfaSXhMCbkQ5r8yT3jNO7jAhivbWLsVcOf_wgxr00Z6QGt0209qDIoN8LtTpFn0KT3WuUUWC3ela3AqG9bWRRYs2l.z1dSdnC47grJzBQyTS_fIbI23MxwWkEMniQk3fJLBbP05avHtEb0l155CkL1A0G4asCqkMA6aY; __cf_bm=htyWRG15QgOAYMIjJWfTC0PVXS73n9dhYF1IYt_47eU-1786133570.3888059-1.0.1.1-jyTZNCrnktOAbnYjhb6r5BqLF2JYSm1wB3plY2e9Wyyk9bGNUhLB20OGxgeXbUgV07bgUh0egqCi4KcuSyd2O0OF6XTtoiYDsvE2o5l4aJ37G_aT9dj_kh854gZeG5EA"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n    \"mode\": \"Result\",\n    \"searchView\": \"Thumbnail\",\n    \"sortSeed\": 880494589,\n    \"sort\": \"DateDesc\",\n    \"pageSize\": 8,\n    \"page\": 1,\n    \"query\": {\n        \"SearchName\": \"\",\n        \"UseGeographyShapes\": 0,\n        \"Filters\": [],\n        \"FieldsValues\": [\n            {\n                \"fieldId\": \"Category\",\n                \"value\": \"Residential\",\n                \"fieldConditionId\": \"\",\n                \"valueConditionId\": \"\"\n            },\n            {\n                \"fieldId\": \"SellingType\",\n                \"value\": \"Sale\",\n                \"fieldConditionId\": \"\",\n                \"valueConditionId\": \"\"\n            },\n            {\n                \"fieldId\": \"LivingArea\",\n                \"value\": \"SquareFeet\",\n                \"fieldConditionId\": \"IsResidentialNotLot\",\n                \"valueConditionId\": \"\"\n            },\n            {\n                \"fieldId\": \"LandArea\",\n                \"value\": \"SquareFeet\",\n                \"fieldConditionId\": \"IsLandArea\",\n                \"valueConditionId\": \"\"\n            },\n            {\n                \"fieldId\": \"SalePrice\",\n                \"value\": 0,\n                \"fieldConditionId\": \"ForSale\",\n                \"valueConditionId\": \"\"\n            },\n            {\n                \"fieldId\": \"SalePrice\",\n                \"value\": 999999999999,\n                \"fieldConditionId\": \"ForSale\",\n                \"valueConditionId\": \"\"\n            }\n        ],\n        \"BrokerCode\": null,\n        \"OfficeKey\": null\n    },\n    \"region\": \"Quebec\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        160,
+        0
+      ],
+      "id": "eacb7b62-5a32-44dd-ad34-10bf290c10c0",
+      "name": "GetNewProperties"
+    },
+    {
+      "parameters": {
+        "chatId": "=@n8nCentrisProperties",
+        "text": "=🏠 *New Property Listing Found*\n\n🏠 *Type* {{ $json[\"Type\"] }}\n💰 *Price:* {{ $json[\"Price\"] }}\n📍 *Address:* {{ $json[\"Address\"] }}\n\n🔗 [View Listing]({{ $json[\"Property_link\"] }})",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        928,
+        224
+      ],
+      "id": "61fa138e-6045-47a1-98b6-e052f3069733",
+      "name": "Send a text message",
+      "webhookId": "cd1ee4c4-c30d-4208-baf5-4c54f293e89d",
+      "retryOnFail": false,
+      "credentials": {
+        "telegramApi": {
+          "id": "zErPP3wJFVGa2W7b",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "GetNewProperties",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ExtractPropertyLink": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "GetFullLink",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GetFullLink": {
+      "main": [
+        [
+          {
+            "node": "GetEachProperty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GetEachProperty": {
+      "main": [
+        [
+          {
+            "node": "PropertyFeatures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PropertyFeatures": {
+      "main": [
+        [
+          {
+            "node": "CleaningforSheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CleaningforSheet": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Just the first time": {
+      "main": [
+        [
+          {
+            "node": "GetEntireProperties",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GetEntireProperties": {
+      "main": [
+        [
+          {
+            "node": "ExtractPropertyLink",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GetNewProperties": {
+      "main": [
+        [
+          {
+            "node": "ExtractPropertyLink",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "8f65d9c3-cd2b-403a-b99e-e36c85fbd4b4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a50b3ef7c87f854b5508bac246b5a224886f407569c077cc0b6418195568838b"
+  },
+  "nodeGroups": [],
+  "id": "WBDPGcmm8Mm2Bk1c",
+  "tags": []
+}
